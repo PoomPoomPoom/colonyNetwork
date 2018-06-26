@@ -326,9 +326,10 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
   uint constant U_PREVIOUS_NEW_REPUTATION_BRANCH_MASK = 7;
   uint constant U_REQUIRE_REPUTATION_CHECK = 8;
   uint constant U_LOG_ENTRY_NUMBER = 9;
+  uint constant U_DECAY_TRANSITION = 10;
 
   function respondToChallenge(
-    uint256[10] u, //An array of 10 UINT Params, ordered as given above.
+    uint256[11] u, //An array of 11 UINT Params, ordered as given above.
     bytes _reputationKey,
     bytes32[] reputationSiblings,
     bytes agreeStateReputationValue,
@@ -342,6 +343,7 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     challengeOpen(u[U_ROUND], u[U_IDX])
   {
     u[U_REQUIRE_REPUTATION_CHECK] = 0;
+    u[U_DECAY_TRANSITION] = 0;
     // TODO: More checks that this is an appropriate time to respondToChallenge (maybe in modifier);
     /* bytes32 jrh = disputeRounds[round][idx].jrh; */
     // The contract knows
@@ -357,7 +359,7 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     //    that it's a decay calculation - not yet implemented.)
 
     // Check the supplied key is appropriate.
-    checkKey(u[U_ROUND], u[U_IDX], u[U_LOG_ENTRY_NUMBER], _reputationKey);
+    checkKey(u, _reputationKey, agreeStateReputationValue);
 
     // Prove the reputation's starting value is in some state, and that state is in the appropriate index in our JRH
     proveBeforeReputationValue(u, _reputationKey, reputationSiblings, agreeStateReputationValue, agreeStateSiblings);
@@ -520,10 +522,36 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     disputeRounds[round][opponentIdx].lastResponseTimestamp = now;
   }
 
-  function checkKey( uint256 round, uint256 idx, uint256 logEntryNumber, bytes memory _reputationKey) internal {
+  function checkKey( uint256[11] u, bytes memory _reputationKey, bytes memory _reputationValue) internal {
     // If the state transition we're checking is less than the number of nodes in the currently accepted state, it's a decay transition (TODO: not implemented)
     // Otherwise, look up the corresponding entry in the reputation log.
+    uint256 updateNumber = disputeRounds[u[U_ROUND]][u[U_IDX]].lowerBound - 1;
+    if (updateNumber < IColonyNetwork(colonyNetworkAddress).getReputationRootHashNNodes()) {
+      checkKeyDecay(updateNumber, _reputationValue);
+      u[U_DECAY_TRANSITION] = 1;
+    } else {
+      checkKeyLogEntry(u[U_ROUND], u[U_IDX], u[U_LOG_ENTRY_NUMBER], _reputationKey);
+    }
+  }
+
+  function checkKeyDecay(uint256 _updateNumber, bytes memory _reputationValue) internal {
+    uint256 uid;
+    bytes memory reputationValue = new bytes(64);
+    reputationValue = _reputationValue;
+    assembly {
+      // NB first 32 bytes contain the length of the bytes object, so we are still correctly loading the second 32 bytes of the
+      // reputationValue, which contains the UID
+      uid := mload(add(reputationValue,64))
+    }
+    // We check that the reputation UID is right for the decay transition being disputed.
+    // The key is then implicitly checked when they prove that the key+value they supplied is in the
+    // right intermediate state in their justification tree.
+    require(uid-1 == _updateNumber);
+  }
+
+  function checkKeyLogEntry(uint256 round, uint256 idx, uint256 logEntryNumber, bytes memory _reputationKey) internal {
     uint256 updateNumber = disputeRounds[round][idx].lowerBound - 1;
+
     ReputationLogEntry storage logEntry = reputationUpdateLog[logEntryNumber];
 
     // Check that the supplied log entry corresponds to this update number
@@ -546,13 +574,9 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
                                               // any unintended side effects here, but I'm not quite confortable enough with EVM's stack to be sure.
                                               // Not sure what the alternative would be anyway.
     }
-    bool decayCalculation = false;
-    if (decayCalculation) {
-    } else {
-      require(expectedAddress == userAddress);
-      require(logEntry.colony == colonyAddress);
-      require(expectedSkillId == skillId);
-    }
+    require(expectedAddress == userAddress);
+    require(logEntry.colony == colonyAddress);
+    require(expectedSkillId == skillId);
   }
 
   function getExpectedSkillIdAndAddress( ReputationLogEntry storage logEntry, uint updateNumber ) internal returns (uint256 expectedSkillId, address expectedAddress) {
@@ -588,7 +612,7 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     }
   }
 
-  function proveBeforeReputationValue(uint256[10] u, bytes _reputationKey, bytes32[] reputationSiblings, bytes agreeStateReputationValue, bytes32[] agreeStateSiblings) internal {
+  function proveBeforeReputationValue(uint256[11] u, bytes _reputationKey, bytes32[] reputationSiblings, bytes agreeStateReputationValue, bytes32[] agreeStateSiblings) internal {
     bytes32 jrh = disputeRounds[u[U_ROUND]][u[U_IDX]].jrh;
     uint256 lastAgreeIdx = disputeRounds[u[U_ROUND]][u[U_IDX]].lowerBound - 1; // We binary searched to the first disagreement, so the last agreement is the one before.
     uint256 reputationValue;
@@ -624,7 +648,7 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     // where we don't prove anything with merkle proofs in this whole dance is here.
   }
 
-  function proveAfterReputationValue(uint256[10] u, bytes _reputationKey, bytes32[] reputationSiblings, bytes disagreeStateReputationValue, bytes32[] disagreeStateSiblings) internal {
+  function proveAfterReputationValue(uint256[11] u, bytes _reputationKey, bytes32[] reputationSiblings, bytes disagreeStateReputationValue, bytes32[] disagreeStateSiblings) internal {
     bytes32 jrh = disputeRounds[u[U_ROUND]][u[U_IDX]].jrh;
     uint256 firstDisagreeIdx = disputeRounds[u[U_ROUND]][u[U_IDX]].lowerBound;
     bytes32 reputationRootHash = getImpliedRoot(_reputationKey, disagreeStateReputationValue, u[U_REPUTATION_BRANCH_MASK], reputationSiblings);
@@ -644,7 +668,7 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     require(jrh==impliedRoot, "colony-invalid-after-reputation-proof");
   }
 
-  function performReputationCalculation(uint256[10] u, bytes agreeStateReputationValueBytes, bytes disagreeStateReputationValueBytes, bytes previousNewReputationValueBytes) internal {
+  function performReputationCalculation(uint256[11] u, bytes agreeStateReputationValueBytes, bytes disagreeStateReputationValueBytes, bytes previousNewReputationValueBytes) internal {
     // TODO: Possibility of decay calculation
     // TODO: Possibility of reputation loss - child reputations do not lose the whole of logEntry.amount, but the same fraction logEntry amount is of the user's reputation in skill given by logEntry.skillId
     ReputationLogEntry storage logEntry = reputationUpdateLog[u[U_LOG_ENTRY_NUMBER]];
@@ -679,20 +703,24 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
 
     // We don't care about underflows for the purposes of comparison, but for the calculation we deem 'correct'.
     // i.e. a reputation can't be negative.
-    if (logEntry.amount < 0 && uint(logEntry.amount * -1) > agreeStateReputationValue ) {
-      require(disagreeStateReputationValue == 0);
-    } else if (uint(logEntry.amount) + agreeStateReputationValue < agreeStateReputationValue) {
-      // We also don't allow reputation to overflow
-      require(disagreeStateReputationValue == 2**256 - 1);
+    if (u[U_DECAY_TRANSITION]==1) {
+      require(disagreeStateReputationValue == (agreeStateReputationValue*999306852819440)/1000000000000000);
     } else {
-      // TODO: Is this safe? I think so, because even if there's over/underflows, they should
-      // still be the same number.
-      require(int(agreeStateReputationValue)+logEntry.amount == int(disagreeStateReputationValue));
+      if (logEntry.amount < 0 && uint(logEntry.amount * -1) > agreeStateReputationValue ) {
+        require(disagreeStateReputationValue == 0);
+      } else if (uint(logEntry.amount) + agreeStateReputationValue < agreeStateReputationValue) {
+        // We also don't allow reputation to overflow
+        require(disagreeStateReputationValue == 2**256 - 1);
+      } else {
+        // TODO: Is this safe? I think so, because even if there's over/underflows, they should
+        // still be the same number.
+        require(int(agreeStateReputationValue)+logEntry.amount == int(disagreeStateReputationValue));
+      }
     }
   }
 
   function checkPreviousReputationInState(
-    uint256[10] u,
+    uint256[11] u,
     bytes _reputationKey,
     bytes32[] reputationSiblings,
     bytes agreeStateReputationValue,
@@ -718,7 +746,7 @@ contract ReputationMiningCycle is PatriciaTreeProofs, DSMath {
     require(impliedRoot == disputeRounds[u[U_ROUND]][u[U_IDX]].jrh);
   }
 
-  function saveProvedReputation(uint256[10] u, bytes previousNewReputationValue) internal {
+  function saveProvedReputation(uint256[11] u, bytes previousNewReputationValue) internal {
     uint256 previousReputationUID;
     assembly {
       previousReputationUID := mload(add(previousNewReputationValue,0x40))
