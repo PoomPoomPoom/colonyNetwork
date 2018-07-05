@@ -163,12 +163,6 @@ contract ColonyStorage is DSAuth {
     _;
   }
 
-  modifier localSkill(uint256 _skillId) {
-    IColonyNetwork colonyNetworkContract = IColonyNetwork(colonyNetworkAddress);
-    require(!colonyNetworkContract.isGlobalSkill(_skillId));
-    _;
-  }
-
   modifier skillExists(uint256 _skillId) {
     IColonyNetwork colonyNetworkContract = IColonyNetwork(colonyNetworkAddress);
     require(_skillId <= colonyNetworkContract.getSkillCount());
