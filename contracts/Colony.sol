@@ -49,6 +49,22 @@ contract Colony is ColonyStorage, PatriciaTreeProofs {
     Authority(authority).setUserRole(_user, ADMIN_ROLE, false);
   }
 
+  // Can only be called by the owner role.
+  function setRecoveryRole(address _user) public auth {
+    if (!Authority(authority).hasUserRole(_user, RECOVERY_ROLE)) {
+      recoveryWhitelistCount++;
+    }
+    Authority(authority).setUserRole(_user, RECOVERY_ROLE, true);
+  }
+
+  // Can only be called by the owner role.
+  function removeRecoveryRole(address _user) public auth {
+    if (Authority(authority).hasUserRole(_user, RECOVERY_ROLE)) {
+      recoveryWhitelistCount--;
+    }
+    Authority(authority).setUserRole(_user, RECOVERY_ROLE, false);
+  }
+
   function setToken(address _token) public
   auth
   {
@@ -208,5 +224,31 @@ contract Colony is ColonyStorage, PatriciaTreeProofs {
 
     emit DomainAdded(domainCount);
     emit PotAdded(potCount);
+  }
+
+  function enterRecoveryMode() public auth {
+    recoveryMode = true;
+  }
+
+  function setStorageSlotRecovery(uint256 _slot, bytes32 _value) public inRecoveryMode auth {
+    recoveryApprovalCount = 0;
+    recoveryEditedTimestamp = now;
+    uint x = _slot;
+    bytes32 y = _value;
+    assembly {
+      sstore(x, y)
+    }
+  }
+
+  function approveExitRecovery() public inRecoveryMode auth {
+    require(recoveryApprovalTimestamps[msg.sender] < recoveryEditedTimestamp, "recovery-approval-already-given");
+    recoveryApprovalTimestamps[msg.sender] = now;
+    recoveryApprovalCount++;
+  }
+
+  function exitRecoveryMode() public inRecoveryMode {
+    uint numRequired = (recoveryWhitelistCount + 1) / 2 + 1;
+    require(recoveryApprovalCount >= numRequired, "recovery-exit-insufficient-approvals");
+    recoveryMode = false;
   }
 }

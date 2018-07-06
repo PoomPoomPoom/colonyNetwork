@@ -24,8 +24,15 @@ import "../lib/dappsys/roles.sol";
 contract Authority is DSRoles {
   uint8 ownerRole = 0;
   uint8 adminRole = 1;
+  uint8 recoveryRole = 2;
 
   constructor(address colony) public {
+    ownerRoles(colony);
+    ownerAndAdminRoles(colony);
+    ownerAndRecoveryRoles(colony);
+  }
+
+  function ownerRoles(address colony) public {
     // functions for owner role
     bytes4 setTokenSig = bytes4(keccak256("setToken(address)"));
     bytes4 bootstrapColonySig = bytes4(keccak256("bootstrapColony(address[],int256[])"));
@@ -33,15 +40,9 @@ contract Authority is DSRoles {
     bytes4 addGlobalSkillSig = bytes4(keccak256("addGlobalSkill(uint256)"));
     bytes4 setOwnerRoleSig = bytes4(keccak256("setOwnerRole(address)"));
     bytes4 removeAdminRoleSig = bytes4(keccak256("removeAdminRole(address)"));
+    bytes4 setRecoveryRoleSig = bytes4(keccak256("setRecoveryRole(address)"));
+    bytes4 removeRecoveryRoleSig = bytes4(keccak256("removeRecoveryRole(address)"));
     bytes4 upgradeSig = bytes4(keccak256("upgrade(uint256)"));
-
-    // functions for admin + owner role
-    bytes4 moveFundsBetweenPotsSig = bytes4(keccak256("moveFundsBetweenPots(uint256,uint256,uint256,address)"));
-    bytes4 addDomainSig = bytes4(keccak256("addDomain(uint256)"));
-    bytes4 makeTaskSig = bytes4(keccak256("makeTask(bytes32,uint256)"));
-    bytes4 startNextRewardPayoutSig = bytes4(keccak256("startNextRewardPayout(address)"));
-    bytes4 cancelTaskSig = bytes4(keccak256("cancelTask(uint256)"));
-    bytes4 setAdminRoleSig = bytes4(keccak256("setAdminRole(address)"));
 
     // Set token
     setRoleCapability(ownerRole, colony, setTokenSig, true);
@@ -55,8 +56,22 @@ contract Authority is DSRoles {
     setRoleCapability(ownerRole, colony, setOwnerRoleSig, true);
     // Remove admin role
     setRoleCapability(ownerRole, colony, removeAdminRoleSig, true);
+    // Set recovery role
+    setRoleCapability(ownerRole, colony, setRecoveryRoleSig, true);
+    // Remove recovery role
+    setRoleCapability(ownerRole, colony, removeRecoveryRoleSig, true);
     // Upgrade colony
     setRoleCapability(ownerRole, colony, upgradeSig, true);
+  }
+
+  function ownerAndAdminRoles(address colony) public {
+    // functions for admin + owner role
+    bytes4 moveFundsBetweenPotsSig = bytes4(keccak256("moveFundsBetweenPots(uint256,uint256,uint256,address)"));
+    bytes4 addDomainSig = bytes4(keccak256("addDomain(uint256)"));
+    bytes4 makeTaskSig = bytes4(keccak256("makeTask(bytes32,uint256)"));
+    bytes4 startNextRewardPayoutSig = bytes4(keccak256("startNextRewardPayout(address)"));
+    bytes4 cancelTaskSig = bytes4(keccak256("cancelTask(uint256)"));
+    bytes4 setAdminRoleSig = bytes4(keccak256("setAdminRole(address)"));
 
     // Allocate funds
     setRoleCapability(adminRole, colony, moveFundsBetweenPotsSig, true);
@@ -76,5 +91,22 @@ contract Authority is DSRoles {
     // Set admin
     setRoleCapability(adminRole, colony, setAdminRoleSig, true);
     setRoleCapability(ownerRole, colony, setAdminRoleSig, true);
+  }
+
+  function ownerAndRecoveryRoles(address colony) public {
+    // functions for owner + recovery role;
+    bytes4 enterRecoveryModeSig = bytes4(keccak256("enterRecoveryMode()"));
+    bytes4 approveExitRecoverySig = bytes4(keccak256("approveExitRecovery()"));
+    bytes4 setStorageSlotRecoverySig = bytes4(keccak256("setStorageSlotRecovery(uint256,bytes32)"));
+
+    // Recovery mode
+    setRoleCapability(ownerRole, colony, enterRecoveryModeSig, true);
+    setRoleCapability(recoveryRole, colony, enterRecoveryModeSig, true);
+
+    setRoleCapability(ownerRole, colony, setStorageSlotRecoverySig, true);
+    setRoleCapability(recoveryRole, colony, setStorageSlotRecoverySig, true);
+
+    setRoleCapability(ownerRole, colony, approveExitRecoverySig, true);
+    setRoleCapability(recoveryRole, colony, approveExitRecoverySig, true);
   }
 }

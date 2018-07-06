@@ -38,7 +38,7 @@ contract ColonyStorage is DSAuth {
 
   // Mapping function signature to 2 task roles whose approval is needed to execute
   mapping (bytes4 => uint8[2]) reviewers;
-  
+
   // Role assignment functions require special type of sign-off.
   // This keeps track of which functions are related to role assignment
   mapping (bytes4 => bool) roleAssignmentSigs;
@@ -84,9 +84,17 @@ contract ColonyStorage is DSAuth {
 
   uint8 constant OWNER_ROLE = 0;
   uint8 constant ADMIN_ROLE = 1;
+  uint8 constant RECOVERY_ROLE = 2;
   uint8 constant MANAGER = 0;
   uint8 constant EVALUATOR = 1;
   uint8 constant WORKER = 2;
+
+  // Variables for recovery mode
+  bool recoveryMode;
+  uint64 recoveryWhitelistCount;
+  uint64 recoveryApprovalCount;
+  uint256 recoveryEditedTimestamp;
+  mapping (address => uint256) recoveryApprovalTimestamps;
 
   // Mapping task id to current "active" nonce for executing task changes
   mapping (uint256 => uint256) taskChangeNonces;
@@ -189,6 +197,12 @@ contract ColonyStorage is DSAuth {
     require(Authority(authority).hasUserRole(_user, ADMIN_ROLE));
     _;
   }
+
+  modifier inRecoveryMode() {
+    require(recoveryMode, "not-in-recovery");
+    _;
+  }
+
 
   modifier self() {
     require(address(this) == msg.sender);
