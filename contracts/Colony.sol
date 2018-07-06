@@ -120,6 +120,7 @@ contract Colony is ColonyStorage, PatriciaTreeProofs {
   }
 
   function addDomain(uint256 _parentDomainId) public
+  domainExists(_parentDomainId)
   auth
   {
     // Note: Remove when we want to allow more domain hierarchy levels
